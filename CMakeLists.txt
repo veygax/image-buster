@@ -13,6 +13,15 @@ project(
 include(cmake/project-is-top-level.cmake)
 include(cmake/variables.cmake)
 
+# ---- FetchContent for rlImGui ----
+include(FetchContent)
+FetchContent_Declare(
+    rlimgui
+    GIT_REPOSITORY https://github.com/raylib-extras/rlImGui.git
+    GIT_TAG main
+)
+FetchContent_MakeAvailable(rlimgui)
+
 # ---- Declare library ----
 
 add_library(
@@ -40,7 +49,57 @@ set_property(TARGET image-buster_exe PROPERTY OUTPUT_NAME image-buster)
 
 target_compile_features(image-buster_exe PRIVATE cxx_std_20)
 
-target_link_libraries(image-buster_exe PRIVATE image-buster_lib)
+# Find required packages
+find_package(raylib CONFIG REQUIRED)
+find_package(imgui CONFIG REQUIRED)
+find_package(glfw3 CONFIG REQUIRED)
+
+# Get raylib include directories for IDE syntax highlighting
+get_target_property(RAYLIB_INCLUDE_DIRS raylib INTERFACE_INCLUDE_DIRECTORIES)
+
+# Create rlImGui library and link it
+add_library(rlImGui STATIC
+    ${rlimgui_SOURCE_DIR}/rlImGui.cpp
+)
+
+target_include_directories(rlImGui PUBLIC
+    ${rlimgui_SOURCE_DIR}
+    ${RAYLIB_INCLUDE_DIRS}
+)
+
+target_link_libraries(rlImGui
+    PUBLIC raylib
+    PUBLIC imgui::imgui
+)
+
+# Add rlImGui include directories to the executable
+target_include_directories(image-buster_exe PRIVATE 
+    ${rlimgui_SOURCE_DIR}
+    ${rlimgui_SOURCE_DIR}/extras
+    ${RAYLIB_INCLUDE_DIRS}
+)
+
+target_link_libraries(image-buster_exe 
+    PRIVATE image-buster_lib
+    PRIVATE raylib
+    PRIVATE imgui::imgui
+    PRIVATE rlImGui
+    PRIVATE glfw
+)
+
+# On Windows, we need to link with winmm for timeBeginPeriod/timeEndPeriod
+if(WIN32)
+    target_link_libraries(image-buster_exe PRIVATE winmm)
+endif()
+
+# Copy resources folder to build directory
+add_custom_command(TARGET image-buster_exe POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/resources $<TARGET_FILE_DIR:image-buster_exe>/resources
+)
+
+# Create compile_commands.json for clangd
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ---- Install rules ----
 
